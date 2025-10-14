@@ -2,13 +2,14 @@
   "expo": {
     "name": "DrinkUp",
     "slug": "DrinkUp",
+    "scheme": "drinkup",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/drinkup_logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/drinkup_logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,14 +18,24 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/drinkup_logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "NOTIFICATIONS",
+        "NOTIFICATIONS"
+      ],
+      "package": "com.anonymous.DrinkUp"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/drinkup_logo.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "650256e6-8d63-44fb-93a2-8ae85deeff11"
+      }
     }
   }
 }
