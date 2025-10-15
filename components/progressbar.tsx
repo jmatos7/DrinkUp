@@ -4,147 +4,104 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 
 interface ProgressBarProps {
-    goal?: string;
-    initialProgress?: number; // 0 a 1
-    increment?: number;
-    onDrink?: (amount: number) => void; // quanto aumenta a cada clique
+  goal: number;
+  increment?: number; // em litros
+  onDrink?: (amount: number) => void;
 }
 
-export default function InteractiveProgressBar({
-    goal = '',
-    initialProgress = 0,
-    increment = 0.1,
-    onDrink, // <- adiciona isto
-}: ProgressBarProps) {
-    const [progress, setProgress] = useState(initialProgress);
-    const widthAnim = useRef(new Animated.Value(initialProgress)).current;
+export default function InteractiveProgressBar({ goal, increment = 0.2, onDrink }: ProgressBarProps) {
+  const [currentLiters, setCurrentLiters] = useState(0);
+  const widthAnim = useRef(new Animated.Value(0)).current;
 
-    // Carregar progresso do AsyncStorage e reset diário
-    useEffect(() => {
-        const loadProgress = async () => {
-            try {
-                const savedProgress = await AsyncStorage.getItem('@daily_progress');
-                const savedDate = await AsyncStorage.getItem('@progress_date');
-                const today = new Date().toDateString();
-
-                if (savedProgress && savedDate === today) {
-                    setProgress(parseFloat(savedProgress));
-                } else {
-                    setProgress(0);
-                    await AsyncStorage.setItem('@daily_progress', '0');
-                    await AsyncStorage.setItem('@progress_date', today);
-                }
-            } catch (e) {
-                console.log('Erro a carregar progresso:', e);
-            }
-        };
-        loadProgress();
-    }, []);
-
-    // Atualiza animação quando progress muda
-    useEffect(() => {
-        Animated.timing(widthAnim, {
-            toValue: progress,
-            duration: 500,
-            useNativeDriver: false,
-        }).start();
-    }, [progress]);
-
-    const handleDrink = async () => {
-        const newProgress = Math.min(progress + increment, 1);
-        setProgress(newProgress);
-
-        const today = new Date().toDateString();
-        try {
-            await AsyncStorage.setItem('@daily_progress', newProgress.toString());
-            await AsyncStorage.setItem('@progress_date', today);
-
-            // calcular litros reais bebidos
-            const dailyGoalLiters = 2; // ou passar como prop
-            const drankLiters = increment * dailyGoalLiters;
-
-            onDrink?.(drankLiters); // passa o valor real em litros
-        } catch (e) {
-            console.log('Erro a guardar progresso:', e);
+  // Carregar progresso do AsyncStorage
+  useEffect(() => {
+    const loadProgress = async () => {
+      try {
+        const savedProgress = await AsyncStorage.getItem('@daily_progress');
+        if (savedProgress) {
+          const liters = JSON.parse(savedProgress);
+          setCurrentLiters(liters);
         }
+      } catch (e) {
+        console.log('Erro a carregar progresso:', e);
+      }
     };
+    loadProgress();
+  }, []);
 
+  // Atualizar animação quando currentLiters muda
+  useEffect(() => {
+    const progress = Math.min(currentLiters / goal, 1);
+    Animated.timing(widthAnim, {
+      toValue: progress,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [currentLiters, goal]);
 
-    return (
-        <View style={styles.wrapper}>
-            <Text style={styles.goalText}>{goal}</Text>
-            <Text style={styles.progressPercent}>{Math.round(progress * 100)}%</Text>
-            <View style={styles.container}>
-                <Animated.View
-                    style={{
-                        width: widthAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ['0%', '100%'],
-                        }),
-                        height: '100%',
-                        borderRadius: 20,
-                        overflow: 'hidden',
-                    }}
-                >
-                    <LinearGradient
-                        colors={['#1976D2', '#42A5F5']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={{ flex: 1 }}
-                    />
-                </Animated.View>
+  const handleDrink = async () => {
+    const newLiters = Math.min(currentLiters + increment, goal);
+    setCurrentLiters(newLiters);
 
-                {progress < 1 && (
-                    <TouchableOpacity
-                        style={styles.buttonOverlay}
-                        activeOpacity={0.7}
-                        onPress={handleDrink}
-                    >
-                        <Text style={styles.buttonText}>Beber 200ml</Text>
-                    </TouchableOpacity>
-                )}
-            </View>
-        </View>
-    );
+    onDrink?.(increment);
+
+    try {
+      await AsyncStorage.setItem('@daily_progress', JSON.stringify(newLiters));
+    } catch (e) {
+      console.log('Erro a guardar progresso:', e);
+    }
+  };
+
+  const litersRemaining = Math.max(goal - currentLiters, 0).toFixed(1);
+  const progressColor = currentLiters >= goal ? ['#4CAF50', '#81C784'] : ['#1976D2', '#42A5F5'];
+
+  return (
+    <View style={styles.wrapper}>
+      <Text style={styles.goalText}>Meta diária: {goal}L</Text>
+      <Text style={styles.remainingText}>
+        {currentLiters >= goal ? 'Meta alcançada! 🎉' : `Faltam ${litersRemaining}L para a meta`}
+      </Text>
+      <Text style={styles.progressPercent}>{((currentLiters / goal) * 100).toFixed(0)}%</Text>
+      <View style={styles.container}>
+        <Animated.View
+          style={{
+            width: widthAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['0%', '100%'],
+            }),
+            height: '100%',
+            borderRadius: 20,
+            overflow: 'hidden',
+          }}
+        >
+          <LinearGradient
+            colors={progressColor}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ flex: 1 }}
+          />
+        </Animated.View>
+
+        {currentLiters < goal && (
+          <TouchableOpacity
+            style={styles.buttonOverlay}
+            activeOpacity={0.7}
+            onPress={handleDrink}
+          >
+            <Text style={styles.buttonText}>Beber {increment}L</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    wrapper: {
-        width: '100%',
-        marginVertical: 20,
-    },
-    goalText: {
-        fontSize: 18,
-        color: '#0D47A1',
-        fontWeight: 'bold',
-        marginBottom: 4,
-        textAlign: 'center',
-    },
-    progressPercent: {
-        fontSize: 16,
-        color: '#1976D2',
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginBottom: 8,
-    },
-    container: {
-        width: '100%',
-        height: 50,
-        backgroundColor: '#BBDEFB',
-        borderRadius: 25,
-        overflow: 'hidden',
-        justifyContent: 'center',
-    },
-    buttonOverlay: {
-        position: 'absolute',
-        width: '100%',
-        height: '100%',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    buttonText: {
-        color: '#0D47A1',
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
+  wrapper: { width: '100%', marginVertical: 20 },
+  goalText: { fontSize: 18, color: '#0D47A1', fontWeight: 'bold', marginBottom: 4, textAlign: 'center' },
+  remainingText: { fontSize: 14, color: '#1976D2', fontWeight: 'bold', textAlign: 'center', marginBottom: 4 },
+  progressPercent: { fontSize: 16, color: '#1976D2', fontWeight: 'bold', textAlign: 'center', marginBottom: 8 },
+  container: { width: '100%', height: 50, backgroundColor: '#BBDEFB', borderRadius: 25, overflow: 'hidden', justifyContent: 'center' },
+  buttonOverlay: { position: 'absolute', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' },
+  buttonText: { color: '#0D47A1', fontWeight: 'bold', fontSize: 16 },
 });

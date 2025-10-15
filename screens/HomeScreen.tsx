@@ -2,51 +2,74 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, FlatList } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import InteractiveProgressBar from '../components/progressbar';
+import ConfettiCannon from 'react-native-confetti-cannon';
+import { Audio } from 'expo-av';
 import { requestPermissions, scheduleNotification, cancelAllNotifications } from '../utils/notifications';
-
 
 interface DrinkLogItem {
   time: string;
   amount: number;
 }
 
+
+
 export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
   const [userAge, setUserAge] = useState(0);
   const [userGender, setUserGender] = useState('');
-  const [userActivity, setUserActivity] = useState(false);
-  const [dailyGoal, setDailyGoal] = useState('Objetivo diário: 2L');
+  const [userActivity, setUserActivity] = useState('');
+  const [dailyGoal, setDailyGoal] = useState(1.5);
   const [dailyLog, setDailyLog] = useState<DrinkLogItem[]>([]);
+  const [showConfetti, setShowConfetti] = useState(false);
 
+  const playCelebrationSound = async () => {
+    const { sound } = await Audio.Sound.createAsync(
+      require('../assets/celebrations.mp3') // substitui pelo teu ficheiro de som
+    );
+    await sound.playAsync();
+  };
+
+
+  // Carregar dados do utilizador e log diário
   useEffect(() => {
-    const loadUserData = async () => {
+    const loadData = async () => {
       try {
-        const name = await AsyncStorage.getItem('@user_name');
-        const age = await AsyncStorage.getItem('@user_age');
-        const gender = await AsyncStorage.getItem('@user_gender');
-        const activity = await AsyncStorage.getItem('@user_activity');
+        const [name, age, gender, activity, savedLog] = await Promise.all([
+          AsyncStorage.getItem('@user_name'),
+          AsyncStorage.getItem('@user_age'),
+          AsyncStorage.getItem('@user_gender'),
+          AsyncStorage.getItem('@user_sport'),
+          AsyncStorage.getItem('@daily_log')
+        ]);
 
         if (name) setUserName(name);
         if (age) setUserAge(parseInt(age, 10));
         if (gender) setUserGender(gender);
-        if (activity) setUserActivity(activity === 'true');
+        if (activity) setUserActivity(activity);
 
         // Calcular meta diária
-        let baseGoal = 2;
-        if (userAge < 18) baseGoal = 1.5; // adolescente/criança
-        const extra = activity === 'true' ? 0.5 : 0;
-        const totalGoal = baseGoal + extra;
-        setDailyGoal(`Objetivo diário: ${totalGoal.toFixed(1)}L`);
+        const calculateGoal = (gender: string, age: number, activity: string) => {
+          let base = gender === 'Feminino' ? 1.6 : 2.0;
+
+          if (age >= 18 && age <= 25) base += 0.5;
+          else if (age > 25 && age <= 40) base += 0.3;
+          else if (age > 40) base += 0.2;
+
+          if (activity === 'Sim') base += 0.5;
+
+          return parseFloat(base.toFixed(1));
+        };
+        setDailyGoal(calculateGoal(gender || '', parseInt(age || '0', 10), activity || ''));
 
         // Carregar log diário
-        const savedLog = await AsyncStorage.getItem('@daily_log');
-        const today = new Date().toDateString();
         if (savedLog) {
           const parsedLog: DrinkLogItem[] = JSON.parse(savedLog);
-          const filteredLog = parsedLog.filter(item => item.time.split(' ')[0] === today);
-          setDailyLog(filteredLog);
+          const today = new Date().toDateString();
+          const todayLog = parsedLog.filter(item => new Date().toDateString() === today);
+          setDailyLog(todayLog);
         }
+
       } catch (e) {
         console.log('Erro a carregar dados do utilizador:', e);
       } finally {
@@ -54,43 +77,42 @@ export default function HomeScreen() {
       }
     };
 
-    loadUserData();
+    loadData();
+
+    // Configurar notificações
+    (async () => {
+      const granted = await requestPermissions();
+      if (!granted) return;
+
+      await cancelAllNotifications();
+      const notificationTimes = [
+        9, 11, 13, 15, 17, 19, 21
+      ];
+      notificationTimes.forEach(hour => scheduleNotification(hour, 0, 'Está na hora de beber água! 💧'));
+    })();
   }, []);
 
-
-  useEffect(() => {
-  (async () => {
-    const granted = await requestPermissions();
-    if (!granted) return;
-
-    // Cancela notificações antigas antes de criar novas
-    await cancelAllNotifications();
-
-    // Exemplo: notificação a cada 2h das 9h às 21h
-    const notificationTimes = [
-      { hour: 9, minute: 0 },
-      { hour: 11, minute: 0 },
-      { hour: 13, minute: 0 },
-      { hour: 15, minute: 0 },
-      { hour: 17, minute: 0 },
-      { hour: 19, minute: 0 },
-      { hour: 21, minute: 0 },
-    ];
-
-    notificationTimes.forEach(time => {
-      scheduleNotification(time.hour, time.minute, "Está na hora de beber água! 💧");
-    });
-  })();
-}, []);
-
-
-  // Callback para registrar cada vez que bebe água
   const handleDrink = async (amount: number) => {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const newLog = [...dailyLog, { time: timeStr, amount }];
     setDailyLog(newLog);
-    await AsyncStorage.setItem('@daily_log', JSON.stringify(newLog));
+
+    // Guardar log completo em JSON
+    try {
+      await AsyncStorage.setItem('@daily_log', JSON.stringify(newLog));
+    } catch (e) {
+      console.log('Erro a guardar log diário:', e);
+    }
+
+    // Confete se atingiu a meta
+    const totalLiters = newLog.reduce((sum, item) => sum + item.amount, 0);
+    if (totalLiters >= dailyGoal) {
+      setShowConfetti(true);
+      playCelebrationSound();
+      setTimeout(() => setShowConfetti(false), 4000);
+
+    };
   };
 
   if (loading) {
@@ -120,11 +142,13 @@ export default function HomeScreen() {
           keyExtractor={(item, index) => index.toString()}
           renderItem={({ item }) => (
             <Text style={styles.logItem}>
-              {item.time} - {item.amount}L
+              {item.time} - {item.amount.toFixed(2)}L
             </Text>
           )}
         />
       )}
+      {showConfetti && <ConfettiCannon count={300} origin={{ x: -10, y: 0 }} fadeOut />}
+
     </View>
   );
 }

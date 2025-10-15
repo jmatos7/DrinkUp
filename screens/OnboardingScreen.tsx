@@ -14,7 +14,9 @@ export default function OnboardingScreen({ navigation }: any) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   // Verifica se já existem dados guardados
   useEffect(() => {
+    
     const checkUserData = async () => {
+      await AsyncStorage.clear(); 
       try {
         const savedName = await AsyncStorage.getItem('@user_name');
         const savedAge = await AsyncStorage.getItem('@user_age');
